@@ -4,7 +4,7 @@
 
 QuizCraft is a responsive, browser-based quiz app for short practice sessions across programming, science, general knowledge, history, and geography.
 
-**Live demo:** Enable GitHub Pages (Settings → Pages → Build and deployment → GitHub Actions), then open the Pages URL for this repository.
+**Live demo:** Run locally with the steps below.
 
 ## Features
 
@@ -29,8 +29,6 @@ ES modules require an HTTP server; opening `index.html` directly as a `file://` 
 1. Install Node.js and npm.
 2. Run `npm install` and `npm test` to install dependencies and run the unit tests.
 3. Open the project in VS Code and use the Live Server extension, or run `python -m http.server 8000` and visit `http://localhost:8000`.
-
-The GitHub Actions workflow in `.github/workflows/pages.yml` deploys the repository root to GitHub Pages on pushes to `main`.
 
 ## Credits
 
