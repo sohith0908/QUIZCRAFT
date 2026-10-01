@@ -1,4 +1,5 @@
 const STORAGE_KEY = "quizcraft-v1";
+const SETTINGS_KEY = "quizcraft-settings";
 const emptyData = () => ({ history: [] });
 
 export function loadStorage() {
@@ -10,6 +11,43 @@ export function loadStorage() {
     return parsed;
   } catch {
     return emptyData();
+  }
+}
+
+/** Persist the user's last setup choices (topic, difficulty, length, timer). */
+export function loadSettings() {
+  try {
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      topic: typeof parsed.topic === "string" ? parsed.topic : "all",
+      difficulty: typeof parsed.difficulty === "string" ? parsed.difficulty : "easy",
+      questionCount: Number.isInteger(Number(parsed.questionCount))
+        ? Number(parsed.questionCount)
+        : 5,
+      timerMode: typeof parsed.timerMode === "string" ? parsed.timerMode : "timed",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveSettings(settings) {
+  try {
+    localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({
+        topic: settings.topic,
+        difficulty: settings.difficulty,
+        questionCount: Number(settings.questionCount),
+        timerMode: settings.timerMode,
+      })
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 

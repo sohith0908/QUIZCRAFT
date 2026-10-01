@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#7954f6" />
+  <meta name="color-scheme" content="light dark" />
 
   <meta
     name="description"
@@ -11,6 +12,8 @@
   />
 
   <title>QuizCraft — Think. Answer. Grow.</title>
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237954f6'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='34' font-family='Segoe UI,Arial,sans-serif' font-weight='700' fill='white'%3EQ%3C/text%3E%3C/svg%3E" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,6 +28,7 @@
 </head>
 
 <body>
+  <a class="skip-link" href="#app">Skip to content</a>
   <div class="site-shell">
 
     <!-- HEADER -->
@@ -35,13 +39,14 @@
       </a>
 
       <div class="topbar-right">
-        <span class="status-dot"></span>
-        <span class="topbar-label">YOUR DAILY BRAIN TRAINING</span>
+        <span class="status-dot" title="Connection status" aria-hidden="true"></span>
+        <span id="connection-status" class="topbar-label connection-status">ONLINE</span>
+        <span class="topbar-label topbar-tagline">YOUR DAILY BRAIN TRAINING</span>
         <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to dark mode" aria-pressed="false">◐</button>
       </div>
     </header>
 
-    <main id="app">
+    <main id="app" tabindex="-1">
 
       <!-- ======================================
            HOME SCREEN — VIBRANT GRADIENT
@@ -399,6 +404,8 @@
             class="quiz-category-label"
           ></span>
 
+          <span id="question-source" class="question-source" aria-live="polite"></span>
+
         </div>
 
         <div
@@ -421,8 +428,8 @@
             EASY
           </span>
 
-          <span id="timer-label" class="timer-label">◷ 30s</span>
-          <button id="pause-timer-button" class="button button-secondary timer-control" type="button">Pause timer</button>
+          <span id="timer-label" class="timer-label" aria-live="polite">◷ 30s</span>
+          <button id="pause-timer-button" class="button button-secondary timer-control" type="button" title="Keyboard: P">Pause timer</button>
 
         </div>
 
@@ -430,9 +437,9 @@
 
           <p id="question-topic" class="eyebrow"></p>
 
-          <h2 id="question-text" class="question-title"></h2>
+          <h2 id="question-text" class="question-title" tabindex="-1"></h2>
 
-          <p class="answer-instruction">SELECT ONE ANSWER</p>
+          <p class="answer-instruction">SELECT ONE ANSWER · A–D OR 1–4</p>
 
           <div id="answer-list" class="answer-list"></div>
 
@@ -449,7 +456,7 @@
             </span>
 
             <div class="quiz-footer-actions">
-              <button id="skip-button" class="button button-secondary" type="button">Skip</button>
+              <button id="skip-button" class="button button-secondary" type="button" title="Keyboard: S">Skip</button>
               <button id="next-button" class="button button-primary" type="button" disabled>
                 Next question <span aria-hidden="true">→</span>
               </button>
@@ -483,7 +490,7 @@
                 CHALLENGE COMPLETE
               </p>
 
-              <h2 id="results-title">Well played!</h2>
+              <h2 id="results-title" tabindex="-1">Well played!</h2>
 
               <p
                 id="results-subtitle"

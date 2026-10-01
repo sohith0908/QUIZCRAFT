@@ -7,12 +7,11 @@ import {
   hasAnsweredCurrent,
   answerQuestion,
   advanceQuestion,
-  getElapsedSeconds,
   getQuizSummary,
   TIMER_SECONDS,
 } from "./quiz.js";
 
-import { getStats, saveResult, resetProgress } from "./storage.js";
+import { getStats, saveResult, resetProgress, loadSettings, saveSettings } from "./storage.js";
 import { fetchTriviaQuestions } from "./trivia.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -37,6 +36,7 @@ let timerInterval = null;
 let timerDeadline = null;
 let timerPaused = false;
 let lastSettings = null;
+let preferredQuestionCount = 5;
 
 const topicIcons = {
   all: "◈",
@@ -54,6 +54,13 @@ const difficultyNames = {
   mixed: "Mixed",
 };
 
+const OPTION_KEYS = {
+  a: 0, A: 0, "1": 0,
+  b: 1, B: 1, "2": 1,
+  c: 2, C: 2, "3": 2,
+  d: 3, D: 3, "4": 3,
+};
+
 function showScreen(name) {
   Object.entries(screens).forEach(([key, screen]) => {
     if (screen) {
@@ -62,12 +69,38 @@ function showScreen(name) {
   });
 
   window.scrollTo({ top: 0, behavior: "smooth" });
+
+  const focusTarget =
+    name === "home"
+      ? $("#start-button")
+      : name === "setup"
+        ? setupForm.querySelector("input[type='radio']:checked")
+        : name === "quiz"
+          ? $("#question-text")
+          : $("#results-title");
+
+  focusTarget?.focus?.({ preventScroll: true });
 }
 
 function stopTimer() {
   if (timerInterval !== null) {
     clearInterval(timerInterval);
     timerInterval = null;
+  }
+}
+
+function updateOnlineStatus() {
+  const online = typeof navigator === "undefined" ? true : navigator.onLine;
+  const dot = $(".status-dot");
+  const label = $("#connection-status");
+
+  document.body.classList.toggle("is-offline", !online);
+  dot?.classList.toggle("offline", !online);
+  if (dot) {
+    dot.title = online ? "Online — extra questions available" : "Offline — using local questions";
+  }
+  if (label) {
+    label.textContent = online ? "ONLINE" : "OFFLINE";
   }
 }
 
@@ -199,9 +232,8 @@ function updateAvailableCounts() {
   const difficulty = getSelectedDifficulty();
   const pool = getAvailableQuestions(selectedTopic, difficulty);
   const availableCount = pool.length;
-  const previousCount = Number(countSelect.value);
+  const previousCount = Number(countSelect.value) || preferredQuestionCount;
 
-  // Allow users to choose any number from 4 to the available total.
   const choices = [];
 
   for (let count = 4; count <= availableCount; count++) {
@@ -224,10 +256,11 @@ function updateAvailableCounts() {
       countSelect.append(option);
     });
 
-    // Preserve the previous selection if it is still available.
     const preferredCount = choices.includes(previousCount)
       ? previousCount
-      : 4;
+      : choices.includes(preferredQuestionCount)
+        ? preferredQuestionCount
+        : choices[0];
 
     countSelect.value = String(preferredCount);
   }
@@ -237,9 +270,47 @@ function updateAvailableCounts() {
       `Only ${availableCount} questions are available for this selection. ` +
       "At least 4 questions are required.";
   } else {
+    const onlineHint = navigator.onLine
+      ? " Online questions may be added when you start."
+      : " You are offline — the local bank will be used.";
     availability.textContent =
-      `${availableCount} questions available for this selection. ` +
-      `Choose between 4 and ${availableCount} questions.`;
+      `${availableCount} local questions available for this selection. ` +
+      `Choose between 4 and ${availableCount}.${onlineHint}`;
+  }
+}
+
+function persistSetupSettings(settings) {
+  preferredQuestionCount = settings.questionCount;
+  saveSettings({
+    topic: settings.topic,
+    difficulty: settings.difficulty,
+    questionCount: settings.questionCount,
+    timerMode: settings.timerMode,
+  });
+}
+
+function applySavedSettings() {
+  const saved = loadSettings();
+  if (!saved) return;
+
+  if (typeof saved.topic === "string") {
+    selectedTopic = saved.topic;
+  }
+
+  if (typeof saved.difficulty === "string") {
+    const difficultyInput = $(`input[name="difficulty"][value="${saved.difficulty}"]`);
+    if (difficultyInput) difficultyInput.checked = true;
+  }
+
+  if (Number.isInteger(Number(saved.questionCount))) {
+    preferredQuestionCount = Number(saved.questionCount);
+  }
+
+  if (typeof saved.timerMode === "string") {
+    const timerSelect = $("#timer-mode");
+    if ([...timerSelect.options].some((option) => option.value === saved.timerMode)) {
+      timerSelect.value = saved.timerMode;
+    }
   }
 }
 
@@ -267,6 +338,8 @@ async function startQuiz(settings, questionIds = null, questionPool = null) {
 
   const quizSettings = { ...settings, questionCount };
   lastSettings = { ...quizSettings };
+  persistSetupSettings(quizSettings);
+
   const submitButton = setupForm.querySelector("[type='submit']");
   submitButton.disabled = true;
   setupError.textContent = "";
@@ -282,6 +355,10 @@ async function startQuiz(settings, questionIds = null, questionPool = null) {
       quizSettings.questionCount
     );
     updateAvailableCounts();
+    availability.textContent =
+      onlineQuestions.length > 0
+        ? `Ready with your local bank plus ${onlineQuestions.length} online questions.`
+        : "Using your local question bank (online trivia unavailable).";
   }
 
   const quizQuestionPool = questionPool ?? [...questions, ...onlineQuestions];
@@ -297,6 +374,14 @@ async function startQuiz(settings, questionIds = null, questionPool = null) {
     quizState = null;
     showScreen("setup");
     return;
+  }
+
+  const onlineInSession = quizState.questions.filter((question) => question.source === "opentdb").length;
+  const sourceBadge = $("#question-source");
+  if (sourceBadge) {
+    sourceBadge.textContent = onlineInSession > 0
+      ? `${onlineInSession} online · rest local`
+      : "Local question bank";
   }
 
   setupError.textContent = "";
@@ -318,7 +403,7 @@ function renderQuestion() {
 
   const current = quizState.currentIndex + 1;
   const total = quizState.questions.length;
-  const progress = Math.round(((current - 1) / total) * 100);
+  const progress = Math.round((current / total) * 100);
 
   $("#quiz-category-label").textContent =
     topics.find((topic) => topic.id === question.topic)?.name ??
@@ -357,6 +442,10 @@ function renderQuestion() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "answer-option";
+    button.setAttribute(
+      "aria-label",
+      `Option ${String.fromCharCode(65 + index)}: ${option}. Press ${String.fromCharCode(65 + index)} or ${index + 1}`
+    );
 
     const letter = document.createElement("span");
     letter.className = "answer-letter";
@@ -367,7 +456,12 @@ function renderQuestion() {
     text.className = "answer-text";
     text.textContent = option;
 
-    button.append(letter, text);
+    const shortcut = document.createElement("kbd");
+    shortcut.className = "answer-shortcut";
+    shortcut.textContent = String(index + 1);
+    shortcut.setAttribute("aria-hidden", "true");
+
+    button.append(letter, text, shortcut);
 
     button.addEventListener("click", () => {
       selectAnswer(option);
@@ -402,6 +496,10 @@ function updateTimerLabel() {
 
   const label = $("#timer-label");
   label.textContent = `◷ ${quizState.remainingSeconds}s`;
+  label.setAttribute(
+    "aria-label",
+    `${quizState.remainingSeconds} seconds remaining${timerPaused ? ", paused" : ""}`
+  );
 
   label.classList.toggle(
     "urgent",
@@ -476,6 +574,7 @@ function selectAnswer(selectedOption, skipped = false) {
 
   $("#answer-list").querySelectorAll("button").forEach((button) => {
     button.disabled = true;
+    button.querySelector(".answer-shortcut")?.remove();
 
     const option = button.querySelector(".answer-text").textContent;
 
@@ -520,6 +619,7 @@ function selectAnswer(selectedOption, skipped = false) {
   $("#next-button").disabled = false;
   $("#skip-button").disabled = true;
   $("#pause-timer-button").hidden = true;
+  $("#next-button").focus({ preventScroll: true });
 }
 
 function nextQuestion() {
@@ -543,6 +643,19 @@ function formatTime(seconds) {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
+function animateScoreRing(percentage) {
+  const ring = $(".score-ring");
+  if (!ring) return;
+
+  ring.classList.remove("score-ring-animate");
+  ring.style.setProperty("--score", "0%");
+
+  requestAnimationFrame(() => {
+    ring.classList.add("score-ring-animate");
+    ring.style.setProperty("--score", `${percentage}%`);
+  });
+}
+
 function showResults() {
   stopTimer();
 
@@ -552,7 +665,7 @@ function showResults() {
 
   saveResult(summary);
 
-  $(".score-ring").style.setProperty("--score", `${summary.percentage}%`);
+  animateScoreRing(summary.percentage);
   $("#results-percentage").textContent = summary.percentage;
   $("#results-fraction").textContent =
     `${summary.correct} out of ${summary.total} correct`;
@@ -661,6 +774,36 @@ function showResults() {
   showScreen("results");
 }
 
+function applyTheme(isDark) {
+  document.body.classList.toggle("dark-mode", isDark);
+  const toggle = $("#theme-toggle");
+  toggle.setAttribute("aria-pressed", String(isDark));
+  toggle.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} mode`);
+  try {
+    localStorage.setItem("quizcraft-theme", isDark ? "dark" : "light");
+  } catch {
+    // Theme still applies for this session when storage is unavailable.
+  }
+}
+
+function restoreTheme() {
+  try {
+    const saved = localStorage.getItem("quizcraft-theme");
+    if (saved === "dark" || saved === "light") {
+      applyTheme(saved === "dark");
+      return;
+    }
+  } catch {
+    // Fall through to system preference.
+  }
+
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+  document.body.classList.toggle("dark-mode", prefersDark);
+  const toggle = $("#theme-toggle");
+  toggle.setAttribute("aria-pressed", String(prefersDark));
+  toggle.setAttribute("aria-label", `Switch to ${prefersDark ? "light" : "dark"} mode`);
+}
+
 // Navigation
 $("#start-button").addEventListener("click", () => {
   setupError.textContent = "";
@@ -676,20 +819,20 @@ document.querySelectorAll("[data-go]").forEach((button) => {
   });
 });
 
-// Update available question counts when the difficulty changes.
 setupForm.addEventListener("change", (event) => {
   if (event.target.name === "difficulty") {
     updateAvailableCounts();
   }
 });
 
-// Start the quiz using the exact number selected by the user.
 setupForm.addEventListener("submit", (event) => {
   event.preventDefault();
   setupError.textContent = "";
 
   const difficulty = getSelectedDifficulty();
   const selectedCount = Number(countSelect.value);
+
+  preferredQuestionCount = selectedCount;
 
   const settings = {
     topic: selectedTopic,
@@ -754,6 +897,15 @@ $("#share-score-button").addEventListener("click", async () => {
   const status = $("#share-status");
 
   try {
+    if (navigator.share) {
+      await navigator.share({
+        title: "QuizCraft score",
+        text: shareText,
+      });
+      status.textContent = "Score shared.";
+      return;
+    }
+
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(shareText);
     } else {
@@ -768,8 +920,12 @@ $("#share-score-button").addEventListener("click", async () => {
       if (!copied) throw new Error("Clipboard unavailable");
     }
     status.textContent = "Score copied to clipboard.";
-  } catch {
-    status.textContent = "Could not copy the score on this device.";
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      status.textContent = "";
+      return;
+    }
+    status.textContent = "Could not share the score on this device.";
   }
 });
 
@@ -779,15 +935,8 @@ $("#reset-progress-button").addEventListener("click", () => {
   updateHomeStats();
 });
 
-$("#theme-toggle").addEventListener("click", (event) => {
-  const isDark = document.body.classList.toggle("dark-mode");
-  event.currentTarget.setAttribute("aria-pressed", String(isDark));
-  event.currentTarget.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} mode`);
-  try {
-    localStorage.setItem("quizcraft-theme", isDark ? "dark" : "light");
-  } catch {
-    // The theme still works for this page even when storage is unavailable.
-  }
+$("#theme-toggle").addEventListener("click", () => {
+  applyTheme(!document.body.classList.contains("dark-mode"));
 });
 
 $("#results-retry-shortcut").addEventListener("click", () => $("#retry-button").click());
@@ -800,7 +949,7 @@ $("#home-button").addEventListener("click", () => {
   showScreen("home");
 });
 
-// Keyboard shortcuts: 1–4 select answers; Enter advances.
+// Keyboard: A–D / 1–4 select answers; Enter advances; P pauses; S skips.
 document.addEventListener("keydown", (event) => {
   if (screens.quiz.classList.contains("hidden")) return;
   if (!quizState) return;
@@ -813,33 +962,48 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (!hasAnsweredCurrent(quizState) && /^[1-4]$/.test(event.key)) {
-    const index = Number(event.key) - 1;
+  if (!hasAnsweredCurrent(quizState) && event.key in OPTION_KEYS) {
+    const index = OPTION_KEYS[event.key];
     const option = getCurrentQuestion(quizState)?.options[index];
 
     if (option !== undefined) {
+      event.preventDefault();
       selectAnswer(option);
     }
-  } else if (
+    return;
+  }
+
+  if (
     event.key === "Enter" &&
     hasAnsweredCurrent(quizState) &&
     !$("#next-button").disabled
   ) {
+    event.preventDefault();
     nextQuestion();
+    return;
+  }
+
+  if ((event.key === "p" || event.key === "P") && !hasAnsweredCurrent(quizState)) {
+    event.preventDefault();
+    toggleTimerPause();
+    return;
+  }
+
+  if ((event.key === "s" || event.key === "S") && !hasAnsweredCurrent(quizState) && !$("#skip-button").disabled) {
+    event.preventDefault();
+    selectAnswer(null, true);
   }
 });
 
+window.addEventListener("online", updateOnlineStatus);
+window.addEventListener("offline", updateOnlineStatus);
+
 // Initialize
+applySavedSettings();
 renderTopics();
 renderHomeTopics();
 updateAvailableCounts();
 updateHomeStats();
-try {
-  const prefersDark = localStorage.getItem("quizcraft-theme") === "dark";
-  document.body.classList.toggle("dark-mode", prefersDark);
-  $("#theme-toggle").setAttribute("aria-pressed", String(prefersDark));
-  $("#theme-toggle").setAttribute("aria-label", `Switch to ${prefersDark ? "light" : "dark"} mode`);
-} catch {
-  // Keep the default light theme when browser storage is unavailable.
-}
+updateOnlineStatus();
+restoreTheme();
 showScreen("home");
