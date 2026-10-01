@@ -6,6 +6,28 @@ QuizCraft is a responsive, browser-based quiz app for short practice sessions ac
 
 **Live demo:** Run locally with the steps below.
 
+## Screenshots
+
+### Home
+
+![Home hero](./screenshots/quizcraft-home.png)
+
+![Home topics and progress](./screenshots/quizcraft-home-topics.png)
+
+### Configure session
+
+![Configure session](./screenshots/quizcraft-setup.png)
+
+### Questions
+
+![Quiz question with feedback](./screenshots/quizcraft-quiz.png)
+
+### Results
+
+![Results overview](./screenshots/quizcraft-results.png)
+
+![Question review](./screenshots/quizcraft-results-review.png)
+
 ## Features
 
 - Choose a subject or mix questions from all topics, then set difficulty, length, and timer.
